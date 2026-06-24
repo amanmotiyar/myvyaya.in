@@ -4,6 +4,11 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Passbook — Daily Expense &amp; Cash Flow Ledger</title>
+<meta name="description" content="A private, local-only daily expense and cash flow ledger." />
+<meta name="theme-color" content="#1A2E4A" />
+<link rel="manifest" href="/manifest.json" />
+<link rel="icon" type="image/png" href="/icon-192.png" />
+<link rel="apple-touch-icon" href="/icon-192.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -113,6 +118,16 @@ tr.dup-row td{border-top-color:#E0C98F;}
 </head>
 <body>
 
+<div id="lockOverlay" style="display:none; position:fixed; inset:0; background:#F4EFE3; z-index:999; flex-direction:column; align-items:center; justify-content:center; padding:20px;">
+  <div style="max-width:320px; width:100%; text-align:center;">
+    <div style="font-family:var(--serif); font-weight:700; font-size:24px; color:var(--ink); margin-bottom:6px;">Passbook</div>
+    <div style="font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-mute); margin-bottom:22px;">Enter PIN to continue</div>
+    <input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" id="lockPinInput" placeholder="••••" style="text-align:center; font-size:20px; letter-spacing:6px; padding:12px; margin-bottom:10px;" onkeydown="if(event.key==='Enter'){attemptUnlock();}" />
+    <div id="lockError" style="color:var(--debit); font-size:12.5px; min-height:18px; margin-bottom:10px;"></div>
+    <button class="primary" style="width:100%;" onclick="attemptUnlock()">Unlock</button>
+  </div>
+</div>
+
 <header>
   <div class="inner">
     <div>
@@ -137,6 +152,29 @@ tr.dup-row td{border-top-color:#E0C98F;}
     <h2>Privacy <span class="sub">everything below stays in this browser</span></h2>
     <div class="hint" style="margin-bottom:10px;">No data leaves this device — there's no server, no account, no sync. Statement passwords are used once to unlock a file in memory and are never saved. Nothing is sent anywhere when you import a statement.</div>
     <button class="ghost" onclick="clearAllData()">Clear all data</button>
+
+    <div style="border-top:1px solid var(--rule); margin:18px 0 14px; padding-top:14px;">
+      <div style="font-weight:600; font-size:13.5px; margin-bottom:4px;">PIN lock <span class="sub">a casual screen lock, not real security — anyone with browser dev tools can still see the data</span></div>
+      <div class="hint" id="pinStatus" style="margin-bottom:10px;"></div>
+      <div id="pinSetForm" style="display:flex; gap:8px; max-width:380px; flex-wrap:wrap;">
+        <input type="password" inputmode="numeric" id="newPin" placeholder="New PIN (4+ digits)" style="flex:1; min-width:140px;" />
+        <input type="password" inputmode="numeric" id="confirmPin" placeholder="Confirm PIN" style="flex:1; min-width:140px;" />
+        <button class="ghost" onclick="setPin()">Set PIN</button>
+      </div>
+      <button class="ghost" id="pinRemoveBtn" style="display:none;" onclick="removePin()">Remove PIN lock</button>
+    </div>
+
+    <div style="border-top:1px solid var(--rule); margin:18px 0 0; padding-top:14px;">
+      <div style="font-weight:600; font-size:13.5px; margin-bottom:4px;">Manual backup <span class="sub">a file you keep, independent of cloud sync</span></div>
+      <div class="hint" style="margin-bottom:10px;">Download everything as a single file you can store anywhere — a USB drive, email to yourself, another cloud folder. Restoring replaces what's currently in this browser.</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="ghost" onclick="downloadBackup()">Download backup</button>
+        <label class="ghost" style="display:inline-flex; align-items:center; cursor:pointer;">
+          Restore from backup
+          <input type="file" accept="application/json" style="display:none;" onchange="restoreBackupFile(this.files[0]); this.value='';" />
+        </label>
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -846,6 +884,89 @@ async function clearAllData(){
   location.reload();
 }
 
+/* ---------- PIN lock (casual deterrent only, not real security) ---------- */
+const PIN_KEY = 'passbook_pin_hash_v1';
+
+async function sha256Hex(text){
+  const enc = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+function updatePinUI(){
+  const has = !!localStorage.getItem(PIN_KEY);
+  document.getElementById('pinStatus').textContent = has
+    ? 'PIN lock is on — this screen will ask for it next time it loads.'
+    : 'PIN lock is off — anyone with access to this browser can see your ledger.';
+  document.getElementById('pinSetForm').style.display = has ? 'none' : 'flex';
+  document.getElementById('pinRemoveBtn').style.display = has ? 'inline-block' : 'none';
+}
+
+async function setPin(){
+  const p1 = document.getElementById('newPin').value.trim();
+  const p2 = document.getElementById('confirmPin').value.trim();
+  if(p1.length < 4){ alert('Use at least 4 digits.'); return; }
+  if(p1 !== p2){ alert("Those two don't match — try again."); return; }
+  localStorage.setItem(PIN_KEY, await sha256Hex(p1));
+  document.getElementById('newPin').value = '';
+  document.getElementById('confirmPin').value = '';
+  updatePinUI();
+}
+
+function removePin(){
+  if(!confirm('Remove the PIN lock?')) return;
+  localStorage.removeItem(PIN_KEY);
+  updatePinUI();
+}
+
+async function checkLock(){
+  if(localStorage.getItem(PIN_KEY)){
+    document.getElementById('lockOverlay').style.display = 'flex';
+    document.getElementById('lockPinInput').focus();
+  }
+}
+
+async function attemptUnlock(){
+  const entered = document.getElementById('lockPinInput').value.trim();
+  const hash = await sha256Hex(entered);
+  if(hash === localStorage.getItem(PIN_KEY)){
+    document.getElementById('lockOverlay').style.display = 'none';
+  } else {
+    document.getElementById('lockError').textContent = 'Incorrect PIN — try again.';
+    document.getElementById('lockPinInput').value = '';
+    document.getElementById('lockPinInput').focus();
+  }
+}
+
+/* ---------- Manual backup (independent of cloud sync) ---------- */
+function downloadBackup(){
+  const data = JSON.stringify({ settings: loadSettings(), transactions: loadTx() }, null, 2);
+  const blob = new Blob([data], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'passbook-backup-' + todayISO() + '.json';
+  a.click();
+}
+
+function restoreBackupFile(file){
+  if(!file) return;
+  if(!confirm('This replaces everything currently stored in this browser with the contents of this backup file. Continue?')) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try{
+      const data = JSON.parse(e.target.result);
+      if(data.settings) localStorage.setItem(SETTINGS_KEY, JSON.stringify(data.settings));
+      if(data.transactions) localStorage.setItem(STORE_KEY, JSON.stringify(data.transactions));
+      render();
+      alert('Backup restored.');
+    }catch(err){
+      alert('Could not read that file — it may not be a Passbook backup.');
+      console.error(err);
+    }
+  };
+  reader.readAsText(file);
+}
+
 function txSignature(t){
   return `${t.date}|${(t.desc||'').trim().toLowerCase()}|${Math.round((t.debit||0)*100)}|${Math.round((t.credit||0)*100)}`;
 }
@@ -1073,6 +1194,14 @@ async function initSync(){
 document.getElementById('manDate').value = todayISO();
 render();
 initSync();
+updatePinUI();
+checkLock();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
 </script>
 </body>
 </html>
