@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Passbook — Daily Expense &amp; Cash Flow Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+:root{
+  --bg:#F4EFE3; --bg-card:#FBF7EC; --bg-soft:#ECE5D2;
+  --ink:#1A2E4A; --ink-soft:#4A5A72; --ink-mute:#8A8366;
+  --rule:#D8CFAF; --rule-strong:#1A2E4A;
+  --debit:#8C2F2F; --debit-soft:#F0DCDC;
+  --credit:#2F6B4F; --credit-soft:#DCEAE1;
+  --serif:'Source Serif 4', Georgia, serif;
+  --sans:'Inter', system-ui, sans-serif;
+  --mono:'JetBrains Mono', ui-monospace, monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;padding-bottom:60px;}
+header{padding:26px 32px 18px;border-bottom:3px double var(--rule-strong);background:var(--bg);}
+header .inner{max-width:1180px;margin:0 auto;display:flex;align-items:baseline;justify-content:space-between;gap:24px;flex-wrap:wrap;}
+h1{font-family:var(--serif);font-weight:700;font-size:27px;letter-spacing:-0.01em;color:var(--ink);}
+.tagline{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-mute);margin-top:4px;}
+.acct-no{font-family:var(--mono);font-size:11px;color:var(--ink-mute);text-align:right;}
+main{max-width:1180px;margin:0 auto;padding:26px 32px;}
+.card{background:var(--bg-card);border:1px solid var(--rule);border-radius:0;padding:18px 20px;margin-bottom:20px;}
+.card h2{font-family:var(--serif);font-size:16px;font-weight:700;margin-bottom:14px;color:var(--ink);}
+.card .sub{font-size:11.5px;color:var(--ink-mute);margin-left:8px;font-weight:400;font-family:var(--sans);}
+
+.anchor-card{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--rule-strong);background:var(--bg-card);padding:16px 20px;margin-bottom:20px;}
+.anchor-card .left .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-mute);margin-bottom:4px;}
+.anchor-card .left .help{font-size:11.5px;color:var(--ink-mute);margin-top:4px;max-width:420px;}
+.anchor-card .val-wrap{display:flex;align-items:baseline;gap:6px;}
+.anchor-card .val-wrap span.rupee{font-family:var(--serif);font-size:22px;font-weight:700;}
+.anchor-card input#startingBalance{font-family:var(--serif);font-size:22px;font-weight:700;border:none;border-bottom:1px dashed var(--ink-mute);background:none;width:180px;color:var(--ink);padding:0 2px;}
+.anchor-card input#startingBalance:focus{outline:none;border-bottom-color:var(--ink);}
+
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule);margin-bottom:20px;}
+.kpi{background:var(--bg-card);padding:14px 16px;}
+.kpi .label{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-mute);margin-bottom:6px;}
+.kpi .value{font-family:var(--serif);font-size:21px;font-weight:700;font-variant-numeric:tabular-nums;}
+.kpi.debit .value{color:var(--debit);}
+.kpi.credit .value{color:var(--credit);}
+
+.tabs{display:flex;gap:0;align-items:center;margin-bottom:18px;border-bottom:1px solid var(--rule);}
+.tab{font-size:13px;padding:9px 16px;cursor:pointer;color:var(--ink-soft);border-bottom:3px solid transparent;font-family:var(--sans);}
+.tab.active{color:var(--ink);border-bottom-color:var(--ink);font-weight:600;}
+.tabs .nav-period{margin-left:auto;display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:12px;color:var(--ink-soft);padding-bottom:6px;}
+.tabs .nav-period button{background:none;border:1px solid var(--rule);border-radius:0;width:26px;height:26px;cursor:pointer;color:var(--ink);}
+
+.drop{border:1.5px dashed var(--rule-strong);border-radius:0;padding:22px;text-align:center;color:var(--ink-soft);cursor:pointer;font-size:13px;display:block;}
+.drop:hover{background:var(--bg-soft);}
+.drop input{display:none;}
+.hint{font-size:11.5px;color:var(--ink-mute);margin-top:8px;}
+
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-mute);padding:0 6px 8px;font-weight:500;border-bottom:1px solid var(--rule);}
+td{padding:7px 6px;border-top:1px solid var(--rule);vertical-align:middle;}
+td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;}
+tr.uncategorized td.cat{color:var(--ink-mute);font-style:italic;}
+.amt-debit{color:var(--debit);}
+.amt-credit{color:var(--credit);}
+td.entryno{font-family:var(--mono);color:var(--ink-mute);font-size:11px;}
+
+.group-head{display:flex;align-items:center;gap:8px;margin:18px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--rule);}
+.group-head .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.group-head .name{font-family:var(--serif);font-weight:700;font-size:13.5px;}
+.group-head .meta{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink-mute);}
+.group-empty{font-size:12px;color:var(--ink-mute);padding:4px 0 10px;font-style:italic;}
+
+input,select{font-family:var(--sans);font-size:13px;padding:7px 9px;border:1px solid var(--rule);border-radius:0;background:#fff;color:var(--ink);width:100%;}
+input:focus,select:focus{outline:none;border-color:var(--ink);}
+.form-row{display:grid;grid-template-columns:120px 1.6fr 1fr 110px 110px 90px;gap:8px;align-items:end;}
+.form-row label{display:block;font-size:10.5px;color:var(--ink-mute);margin-bottom:4px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em;}
+button.primary{background:var(--ink);color:#fff;border:1px solid var(--ink);border-radius:0;padding:9px 14px;font-size:13px;cursor:pointer;font-weight:500;}
+button.primary:hover{background:#000;}
+button.ghost{background:none;border:1px solid var(--rule-strong);border-radius:0;padding:7px 11px;font-size:12px;cursor:pointer;color:var(--ink);}
+button.ghost:hover{background:var(--bg-soft);}
+button.link{background:none;border:none;color:var(--ink-soft);cursor:pointer;font-size:12px;text-decoration:underline;}
+.icon-btn{background:none;border:none;cursor:pointer;color:var(--ink-mute);font-size:13px;padding:2px 4px;}
+.icon-btn:hover{color:var(--debit);}
+
+.chip-list{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+.chip{display:flex;align-items:center;gap:6px;background:var(--bg-soft);border:1px solid var(--rule);padding:5px 10px;font-size:12.5px;}
+.chip button{background:none;border:none;cursor:pointer;color:var(--ink-mute);font-size:12px;line-height:1;}
+.chip button:hover{color:var(--debit);}
+.add-cat-row{display:flex;gap:8px;max-width:340px;}
+
+.bar-bg{height:7px;background:var(--bg-soft);overflow:hidden;border:1px solid var(--rule);}
+.bar-fill{height:100%;}
+.cat-row{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;}
+
+.empty{color:var(--ink-mute);font-size:13px;text-align:center;padding:24px 0;}
+.toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+
+.rollup-row td.curmonth{font-weight:600;}
+.rollup-row .swatch{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;}
+
+tr.dup-row{background:#F5E6C8;}
+tr.dup-row td{border-top-color:#E0C98F;}
+.dup-tag{font-family:var(--mono); font-size:9px; letter-spacing:.05em; text-transform:uppercase; color:#8A5A12; margin-top:3px;}
+
+@media (max-width:760px){
+  .kpi-row{grid-template-columns:repeat(2,1fr);}
+  .form-row{grid-template-columns:1fr 1fr;}
+  .anchor-card{flex-direction:column;align-items:flex-start;gap:10px;}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="inner">
+    <div>
+      <h1>Passbook</h1>
+      <div class="tagline">Daily expense &amp; cash flow ledger</div>
+    </div>
+    <div class="acct-no" id="acctStamp">Statement as of —</div>
+  </div>
+</header>
+
+<main>
+
+  <div class="anchor-card">
+    <div class="left">
+      <div class="lbl">Account opening balance</div>
+      <div class="val-wrap"><span class="rupee">₹</span><input type="number" id="startingBalance" step="0.01" onchange="saveStartingBalance()" /></div>
+      <div class="help">This is the anchor every balance in the ledger is calculated from. Change it any time — every period below recalculates automatically.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Privacy <span class="sub">everything below stays in this browser</span></h2>
+    <div class="hint" style="margin-bottom:10px;">No data leaves this device — there's no server, no account, no sync. Statement passwords are used once to unlock a file in memory and are never saved. Nothing is sent anywhere when you import a statement.</div>
+    <button class="ghost" onclick="clearAllData()">Clear all data</button>
+  </div>
+
+  <div class="card">
+    <h2>Cloud folder sync <span class="sub">auto-save to a file in OneDrive / Google Drive</span></h2>
+    <div class="hint" id="syncStatus" style="margin-bottom:10px;">Checking browser support…</div>
+    <div id="syncActions" style="display:flex; gap:8px;"></div>
+    <div class="hint" style="margin-top:10px;">Pick or create a file inside your OneDrive or Google Drive synced folder. Every change here writes straight to that file, and the cloud app syncs it for you. On another device, connect to that same file and use "Load from file" to pull in the latest data.</div>
+  </div>
+
+  <div class="kpi-row" id="kpiRow"></div>
+
+  <div class="tabs" id="periodTabs">
+    <div class="tab active" data-period="daily" onclick="setPeriod('daily')">Daily</div>
+    <div class="tab" data-period="weekly" onclick="setPeriod('weekly')">Weekly</div>
+    <div class="tab" data-period="monthly" onclick="setPeriod('monthly')">Monthly</div>
+    <div class="tab" data-period="annual" onclick="setPeriod('annual')">Annual</div>
+    <div class="nav-period">
+      <button onclick="shiftPeriod(-1)">‹</button>
+      <span id="periodLabel">—</span>
+      <button onclick="shiftPeriod(1)">›</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Categories <span class="sub">tag transactions, or leave them blank</span></h2>
+    <div class="chip-list" id="chipList"></div>
+    <div class="add-cat-row">
+      <input type="text" id="newCatInput" placeholder="New category name" onkeydown="if(event.key==='Enter'){addCategory();}" />
+      <button class="ghost" onclick="addCategory()">Add</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Import bank statement <span class="sub">PDF, best-effort parsing — review before adding</span></h2>
+    <label class="drop" id="dropZone">
+      <input type="file" id="pdfInput" accept="application/pdf" onchange="handlePdf(this.files[0])" />
+      <span id="dropLabel">Click to choose a PDF statement, or drag one here</span>
+    </label>
+    <div class="hint">Every bank lays out statements differently. Parsed rows appear below for you to check, edit, or discard — nothing is added to the ledger automatically.</div>
+    <div id="passwordPrompt" style="display:none; margin-top:12px; border-top:1px solid var(--rule); padding-top:12px;">
+      <label style="display:block; font-size:10.5px; color:var(--ink-mute); margin-bottom:4px; font-family:var(--mono); text-transform:uppercase; letter-spacing:.05em;">This statement is password-protected</label>
+      <div style="display:flex; gap:8px; max-width:340px;">
+        <input type="password" id="pdfPassword" placeholder="Enter PDF password" onkeydown="if(event.key==='Enter'){submitPdfPassword();}" />
+        <button class="ghost" onclick="submitPdfPassword()">Unlock</button>
+      </div>
+      <div class="hint" id="pdfPasswordHint">Used once, in your browser, to open this file — never saved.</div>
+    </div>
+    <div id="previewArea"></div>
+  </div>
+
+  <div class="card">
+    <h2>Add transaction manually</h2>
+    <div class="form-row">
+      <div><label>Date</label><input type="date" id="manDate" /></div>
+      <div><label>Description</label><input type="text" id="manDesc" placeholder="e.g. Grocery store" /></div>
+      <div><label>Category</label><select id="manCat"></select></div>
+      <div><label>Debit</label><input type="number" id="manDebit" placeholder="0.00" step="0.01" /></div>
+      <div><label>Credit</label><input type="number" id="manCredit" placeholder="0.00" step="0.01" /></div>
+      <div><button class="primary" onclick="addManual()">Add</button></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <h2 style="margin-bottom:0;">Ledger <span class="sub" id="ledgerSub"></span></h2>
+      <div style="display:flex; gap:14px; align-items:center;">
+        <span id="groupToggleAll"></span>
+        <button class="link" onclick="exportCsv()">Export CSV</button>
+      </div>
+    </div>
+    <div id="ledgerGroups"></div>
+    <div class="empty" id="ledgerEmpty" style="display:none;">No transactions in this period yet.</div>
+  </div>
+
+  <div class="card" id="rollupCard" style="display:none;">
+    <h2><span id="rollupTitle">Carry-forward</span> <span class="sub" id="rollupSub"></span></h2>
+    <div style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
+    <table style="min-width:520px;">
+      <thead><tr><th></th><th>Month</th><th class="num">Opening</th><th class="num">Debits</th><th class="num">Credits</th><th class="num">Closing</th></tr></thead>
+      <tbody id="rollupBody"></tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Categorized spend <span class="sub">this period</span></h2>
+    <div id="catBreakdown"></div>
+  </div>
+
+</main>
+
+<script>
+const STORE_KEY = 'ledger_transactions_v1';
+const SETTINGS_KEY = 'ledger_settings_v1';
+let currentPeriod = 'daily';
+let periodOffset = 0;
+
+const MONTH_COLORS = [
+  {bg:'#E4E9F0',fg:'#1A2E4A'},{bg:'#F5E6C8',fg:'#8A5A12'},{bg:'#E6DEF0',fg:'#4A2F7A'},
+  {bg:'#EDE0D0',fg:'#6B4A2F'},{bg:'#E2E5E8',fg:'#3A4750'},{bg:'#DCEAE8',fg:'#1F6B63'},
+  {bg:'#EAEFD8',fg:'#5A6B1F'},{bg:'#DCE6EF',fg:'#2F4A6B'},{bg:'#F5DEE8',fg:'#8A2F5A'},
+  {bg:'#F2E8D0',fg:'#7A5A1F'},{bg:'#E2DEF0',fg:'#3A2F7A'},{bg:'#E5E3DC',fg:'#2C2C2A'}
+];
+const WEEKDAY_COLORS = [MONTH_COLORS[0],MONTH_COLORS[5],MONTH_COLORS[1],MONTH_COLORS[2],MONTH_COLORS[3],MONTH_COLORS[4],MONTH_COLORS[6]];
+const WEEKDAY_NAMES = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function loadTx(){ try{ return JSON.parse(localStorage.getItem(STORE_KEY)) || []; }catch(e){ return []; } }
+function saveTx(list){ localStorage.setItem(STORE_KEY, JSON.stringify(list)); writeSyncFile(); }
+function loadSettings(){
+  try{
+    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+    if(s) return s;
+  }catch(e){}
+  return { startingBalance:0, categories:['Food','Transport','Utilities','Rent','Shopping','Health','Entertainment','Other'] };
+}
+function saveSettingsObj(s){ localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); writeSyncFile(); }
+
+function saveStartingBalance(){
+  const s = loadSettings();
+  s.startingBalance = parseFloat(document.getElementById('startingBalance').value) || 0;
+  saveSettingsObj(s);
+  render();
+}
+
+function renderChips(){
+  const s = loadSettings();
+  document.getElementById('chipList').innerHTML = s.categories.length
+    ? s.categories.map((c,i)=>`<div class="chip">${c}<button onclick="removeCategory(${i})" title="Remove">✕</button></div>`).join('')
+    : '<div class="empty" style="padding:0;">No categories yet — add one below.</div>';
+}
+function addCategory(){
+  const input = document.getElementById('newCatInput');
+  const name = input.value.trim();
+  if(!name) return;
+  const s = loadSettings();
+  if(s.categories.some(c=>c.toLowerCase()===name.toLowerCase())){ input.value=''; return; }
+  s.categories.push(name);
+  saveSettingsObj(s);
+  input.value = '';
+  renderChips();
+  populateCategorySelect();
+}
+function removeCategory(i){
+  const s = loadSettings();
+  s.categories.splice(i,1);
+  saveSettingsObj(s);
+  renderChips();
+  populateCategorySelect();
+}
+function populateCategorySelect(){
+  const s = loadSettings();
+  const sel = document.getElementById('manCat');
+  sel.innerHTML = '<option value="">— optional —</option>' + s.categories.map(c=>`<option value="${c}">${c}</option>`).join('');
+}
+
+function fmt(n){
+  n = Math.round((n||0)*100)/100;
+  return '₹' + n.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function isoOf(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function todayISO(){ return isoOf(new Date()); }
+
+function addManual(){
+  const date = document.getElementById('manDate').value || todayISO();
+  const desc = document.getElementById('manDesc').value.trim() || '(no description)';
+  const cat = document.getElementById('manCat').value;
+  const debit = parseFloat(document.getElementById('manDebit').value) || 0;
+  const credit = parseFloat(document.getElementById('manCredit').value) || 0;
+  if(debit === 0 && credit === 0){ alert('Enter a debit or credit amount.'); return; }
+  const list = loadTx();
+  list.push({ id: Date.now()+''+Math.random(), date, desc, cat, debit, credit });
+  saveTx(list);
+  document.getElementById('manDesc').value = '';
+  document.getElementById('manDebit').value = '';
+  document.getElementById('manCredit').value = '';
+  render();
+}
+function deleteTx(id){
+  if(!confirm('Delete this transaction?')) return;
+  saveTx(loadTx().filter(t=>t.id !== id));
+  render();
+}
+
+function setPeriod(p){
+  currentPeriod = p; periodOffset = 0;
+  collapsedGroups.clear();
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.period===p));
+  render();
+}
+function shiftPeriod(dir){ periodOffset += dir; render(); }
+
+function mondayStartIndex(d){ return (d.getDay()+6)%7; }
+
+function periodBounds(period, offset){
+  const now = new Date(); now.setHours(0,0,0,0);
+  if(period==='daily'){
+    const d = new Date(now); d.setDate(d.getDate()+offset);
+    return {start:d, end:d, ref:d};
+  }
+  if(period==='weekly'){
+    const ref = new Date(now); ref.setDate(ref.getDate()+offset*7);
+    const start = new Date(ref); start.setDate(start.getDate()-mondayStartIndex(start));
+    const end = new Date(start); end.setDate(end.getDate()+6);
+    return {start, end, ref};
+  }
+  if(period==='monthly'){
+    const ref = new Date(now.getFullYear(), now.getMonth()+offset, 1);
+    const start = new Date(ref.getFullYear(), ref.getMonth(), 1);
+    const end = new Date(ref.getFullYear(), ref.getMonth()+1, 0);
+    return {start, end, ref};
+  }
+  const ref = new Date(now.getFullYear()+offset, 0, 1);
+  const start = new Date(ref.getFullYear(),0,1);
+  const end = new Date(ref.getFullYear(),11,31);
+  return {start, end, ref};
+}
+
+function withRunningBalance(list, startingBalance){
+  const sorted = list.slice().sort((a,b)=> a.date.localeCompare(b.date) || (a.id>b.id?1:-1));
+  let running = startingBalance;
+  return sorted.map(t=>{
+    running = running - (t.debit||0) + (t.credit||0);
+    return Object.assign({}, t, {balance: running});
+  });
+}
+
+function balanceJustBefore(withBal, isoDate, startingBalance){
+  let last = startingBalance;
+  for(const t of withBal){ if(t.date < isoDate) last = t.balance; else break; }
+  return last;
+}
+
+function periodLabelText(period, b){
+  if(period==='daily') return b.start.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+  if(period==='monthly') return b.start.toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+  if(period==='annual') return String(b.start.getFullYear());
+  return b.start.toLocaleDateString('en-IN',{day:'2-digit',month:'short'})+' – '+b.end.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+}
+
+function subGroupsFor(period, start, end){
+  const groups = [];
+  if(period==='weekly'){
+    for(let i=0;i<7;i++){
+      const d = new Date(start); d.setDate(d.getDate()+i);
+      groups.push({key:isoOf(d), label:WEEKDAY_NAMES[i]+' · '+d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'}), color:WEEKDAY_COLORS[i], from:isoOf(d), to:isoOf(d)});
+    }
+  } else if(period==='monthly'){
+    const day1 = new Date(start);
+    const offset = mondayStartIndex(day1);
+    const daysInMonth = end.getDate();
+    let weekIdx = 0;
+    for(let d=1; d<=daysInMonth; d += (d===1 ? (7-offset) : 7)){
+      const wkStart = d;
+      const wkEnd = Math.min(daysInMonth, d===1 ? (7-offset) : (d+6));
+      const sDate = new Date(start.getFullYear(), start.getMonth(), wkStart);
+      const eDate = new Date(start.getFullYear(), start.getMonth(), wkEnd);
+      groups.push({key:'w'+weekIdx, label:'Week '+(weekIdx+1)+' · '+sDate.toLocaleDateString('en-IN',{day:'2-digit',month:'short'})+' – '+eDate.toLocaleDateString('en-IN',{day:'2-digit',month:'short'}), color:MONTH_COLORS[weekIdx % MONTH_COLORS.length], from:isoOf(sDate), to:isoOf(eDate)});
+      weekIdx++;
+    }
+  } else if(period==='annual'){
+    const year = start.getFullYear();
+    for(let m=0;m<12;m++){
+      const sDate = new Date(year,m,1), eDate = new Date(year,m+1,0);
+      groups.push({key:'m'+m, label:MONTH_NAMES[m], color:MONTH_COLORS[m], from:isoOf(sDate), to:isoOf(eDate)});
+    }
+  }
+  return groups;
+}
+
+function render(){
+  const settings = loadSettings();
+  document.getElementById('startingBalance').value = settings.startingBalance;
+  renderChips();
+  populateCategorySelect();
+
+  const all = loadTx();
+  const withBal = withRunningBalance(all, settings.startingBalance);
+  const b = periodBounds(currentPeriod, periodOffset);
+  const startIso = isoOf(b.start), endIso = isoOf(b.end);
+
+  document.getElementById('periodLabel').textContent = periodLabelText(currentPeriod, b);
+  document.getElementById('acctStamp').textContent = 'Statement as of ' + new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+
+  const inPeriod = withBal.filter(t => t.date >= startIso && t.date <= endIso);
+  const opening = balanceJustBefore(withBal, startIso, settings.startingBalance);
+  const totalDebit = inPeriod.reduce((s,t)=>s+(t.debit||0),0);
+  const totalCredit = inPeriod.reduce((s,t)=>s+(t.credit||0),0);
+  const closing = opening - totalDebit + totalCredit;
+
+  document.getElementById('kpiRow').innerHTML = `
+    <div class="kpi"><div class="label">Opening balance</div><div class="value">${fmt(opening)}</div></div>
+    <div class="kpi debit"><div class="label">Debits</div><div class="value">${fmt(totalDebit)}</div></div>
+    <div class="kpi credit"><div class="label">Credits</div><div class="value">${fmt(totalCredit)}</div></div>
+    <div class="kpi"><div class="label">Closing balance</div><div class="value">${fmt(closing)}</div></div>
+  `;
+
+  renderLedgerGroups(inPeriod, b.start, b.end);
+  renderCategoryBreakdown(inPeriod);
+
+  const rollupCard = document.getElementById('rollupCard');
+  if(currentPeriod === 'annual' || currentPeriod === 'monthly'){
+    rollupCard.style.display = 'block';
+    renderRollup(withBal, settings, currentPeriod, b);
+  } else {
+    rollupCard.style.display = 'none';
+  }
+}
+
+let collapsedGroups = new Set();
+
+function toggleGroup(key){
+  if(collapsedGroups.has(key)) collapsedGroups.delete(key);
+  else collapsedGroups.add(key);
+  render();
+}
+
+function renderLedgerGroups(inPeriod, start, end){
+  const wrap = document.getElementById('ledgerGroups');
+  const empty = document.getElementById('ledgerEmpty');
+  document.getElementById('ledgerSub').textContent =
+    currentPeriod==='daily' ? '' : currentPeriod==='weekly' ? '· by day, Monday to Sunday' : currentPeriod==='monthly' ? '· by week' : '· by month';
+
+  if(currentPeriod==='daily'){
+    empty.style.display = inPeriod.length ? 'none' : 'block';
+    wrap.innerHTML = inPeriod.length ? renderRows(inPeriod) : '';
+    document.getElementById('groupToggleAll').innerHTML = '';
+    return;
+  }
+
+  empty.style.display = 'none';
+  const groups = subGroupsFor(currentPeriod, start, end);
+  let html = '';
+  let anyTx = false;
+  groups.forEach(g=>{
+    const groupKey = currentPeriod+'-'+g.key;
+    const rows = inPeriod.filter(t => t.date >= g.from && t.date <= g.to);
+    if(rows.length) anyTx = true;
+    const debit = rows.reduce((s,t)=>s+(t.debit||0),0);
+    const credit = rows.reduce((s,t)=>s+(t.credit||0),0);
+    const isCollapsed = collapsedGroups.has(groupKey);
+    html += `<div class="group-head" style="cursor:pointer;" onclick="toggleGroup('${groupKey}')">
+      <span class="arrow" style="font-family:var(--mono); font-size:11px; color:var(--ink-mute); width:14px; display:inline-block;">${isCollapsed?'▸':'▾'}</span>
+      <span class="dot" style="background:${g.color.fg}"></span><span class="name">${g.label}</span>
+      <span class="meta">${rows.length} entr${rows.length===1?'y':'ies'} · ${fmt(debit)} debit · ${fmt(credit)} credit</span></div>`;
+    if(!isCollapsed){
+      html += rows.length ? renderRows(rows) : '<div class="group-empty">No transactions.</div>';
+    }
+  });
+  if(!anyTx){
+    wrap.innerHTML = '';
+    empty.style.display = 'block';
+    document.getElementById('groupToggleAll').innerHTML = '';
+  } else {
+    wrap.innerHTML = html;
+    const allKeys = groups.map(g => currentPeriod+'-'+g.key);
+    const allCollapsed = allKeys.every(k => collapsedGroups.has(k));
+    document.getElementById('groupToggleAll').innerHTML = allCollapsed
+      ? `<button class="link" onclick="expandAllGroups()">Expand all</button>`
+      : `<button class="link" onclick="collapseAllGroups()">Collapse all</button>`;
+  }
+}
+
+function expandAllGroups(){ collapsedGroups.clear(); render(); }
+function collapseAllGroups(){
+  const b = periodBounds(currentPeriod, periodOffset);
+  subGroupsFor(currentPeriod, b.start, b.end).forEach(g => collapsedGroups.add(currentPeriod+'-'+g.key));
+  render();
+}
+
+function renderRows(rows){
+  const sorted = rows.slice().sort((a,b)=> a.date.localeCompare(b.date) || (a.id>b.id?1:-1));
+  return `<div style="overflow-x:auto; -webkit-overflow-scrolling:touch;"><table style="margin-bottom:8px; min-width:620px;">
+    <thead><tr><th></th><th>Date</th><th>Description</th><th>Category</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th><th></th></tr></thead>
+    <tbody>
+      ${sorted.map(t=>`
+        <tr class="${t.cat ? '' : 'uncategorized'}">
+          <td class="entryno">#${(t.id+'').slice(-5)}</td>
+          <td>${new Date(t.date+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</td>
+          <td>${escapeHtml(t.desc)}</td>
+          <td class="cat">${t.cat || '— uncategorized'}</td>
+          <td class="num">${t.debit ? '<span class="amt-debit">'+fmt(t.debit)+'</span>' : ''}</td>
+          <td class="num">${t.credit ? '<span class="amt-credit">'+fmt(t.credit)+'</span>' : ''}</td>
+          <td class="num">${fmt(t.balance)}</td>
+          <td><button class="icon-btn" onclick="deleteTx('${t.id}')" title="Delete">✕</button></td>
+        </tr>`).join('')}
+    </tbody>
+  </table></div>`;
+}
+
+function renderRollup(withBal, settings, period, b){
+  const todayIso = todayISO();
+  let groups, opening;
+  if(period === 'annual'){
+    const year = b.start.getFullYear();
+    opening = balanceJustBefore(withBal, year+'-01-01', settings.startingBalance);
+    groups = MONTH_NAMES.map((name,m)=>({
+      label:name,
+      from:`${year}-${String(m+1).padStart(2,'0')}-01`,
+      to:isoOf(new Date(year,m+1,0)),
+      color:MONTH_COLORS[m]
+    }));
+    document.getElementById('rollupTitle').textContent = 'Year carry-forward';
+    document.getElementById('rollupSub').textContent = "every month's closing balance becomes the next month's opening";
+  } else {
+    opening = balanceJustBefore(withBal, isoOf(b.start), settings.startingBalance);
+    groups = subGroupsFor('monthly', b.start, b.end).map(g => ({
+      label: g.label.split(' · ')[0] + ' · ' + g.label.split(' · ')[1],
+      from: g.from, to: g.to, color: g.color
+    }));
+    document.getElementById('rollupTitle').textContent = 'Month carry-forward';
+    document.getElementById('rollupSub').textContent = "every week's closing balance becomes the next week's opening";
+  }
+
+  let rows = '';
+  groups.forEach(g=>{
+    const tx = withBal.filter(t => t.date >= g.from && t.date <= g.to);
+    const debit = tx.reduce((s,t)=>s+(t.debit||0),0);
+    const credit = tx.reduce((s,t)=>s+(t.credit||0),0);
+    const closing = opening - debit + credit;
+    const isCurrent = todayIso >= g.from && todayIso <= g.to;
+    rows += `<tr class="rollup-row ${isCurrent?'curmonth':''}">
+      <td><span class="swatch" style="background:${g.color.fg}"></span></td>
+      <td>${g.label}${isCurrent ? ' <span class="sub">(current)</span>' : ''}</td>
+      <td class="num">${fmt(opening)}</td>
+      <td class="num">${debit ? '<span class="amt-debit">'+fmt(debit)+'</span>' : fmt(0)}</td>
+      <td class="num">${credit ? '<span class="amt-credit">'+fmt(credit)+'</span>' : fmt(0)}</td>
+      <td class="num">${fmt(closing)}</td>
+    </tr>`;
+    opening = closing;
+  });
+  document.getElementById('rollupBody').innerHTML = rows;
+}
+
+function renderCategoryBreakdown(inPeriod){
+  const catTotals = {};
+  let uncategorized = 0;
+  inPeriod.forEach(t=>{
+    const amt = t.debit||0;
+    if(!amt) return;
+    if(t.cat){ catTotals[t.cat] = (catTotals[t.cat]||0)+amt; }
+    else { uncategorized += amt; }
+  });
+  const maxVal = Math.max(1, ...Object.values(catTotals), uncategorized);
+  let catHtml = Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).map(([cat,val])=>`
+    <div class="cat-row"><span>${cat}</span><span>${fmt(val)}</span></div>
+    <div class="bar-bg" style="margin-bottom:10px;"><div class="bar-fill" style="width:${(val/maxVal*100).toFixed(0)}%;background:var(--debit)"></div></div>
+  `).join('');
+  if(uncategorized > 0){
+    catHtml += `
+    <div class="cat-row"><span>Uncategorized</span><span>${fmt(uncategorized)}</span></div>
+    <div class="bar-bg"><div class="bar-fill" style="width:${(uncategorized/maxVal*100).toFixed(0)}%;background:var(--ink-mute)"></div></div>`;
+  }
+  document.getElementById('catBreakdown').innerHTML = catHtml || '<div class="empty">No debits in this period yet.</div>';
+}
+
+function escapeHtml(s){
+  return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function exportCsv(){
+  const list = loadTx().sort((a,b)=>a.date.localeCompare(b.date));
+  const rows = [['Date','Description','Category','Debit','Credit']];
+  list.forEach(t=>rows.push([t.date, t.desc, t.cat||'', t.debit||0, t.credit||0]));
+  const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ledger_export.csv';
+  a.click();
+}
+
+/* ---------- PDF statement parsing ---------- */
+if(window['pdfjsLib']){
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+function normalizeDate(s){
+  if(!s) return null;
+  s = s.trim();
+  const months = {jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};
+  let m = s.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
+  if(m){
+    let [, d, mo2, y] = m;
+    if(y.length===2) y = '20'+y;
+    if(parseInt(mo2,10) > 12){ return null; }
+    return `${y}-${mo2.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+  m = s.match(/(\d{1,2})[\/\-\.]([A-Za-z]{3})[\/\-\.](\d{2,4})/);
+  if(m){
+    let [, d, monStr, y] = m;
+    const mo = months[monStr.toLowerCase()];
+    if(!mo) return null;
+    if(y.length===2) y = '20'+y;
+    return `${y}-${mo}-${d.padStart(2,'0')}`;
+  }
+  return null;
+}
+function parseAmt(s){
+  if(!s) return 0;
+  const m = s.replace(/,/g,'').match(/-?\d+(\.\d+)?/);
+  return m ? Math.abs(parseFloat(m[0])) : 0;
+}
+
+// Group text fragments into visual rows using their y position, reading left-to-right within each row.
+function clusterRows(items, yTol){
+  yTol = yTol || 2.5;
+  const sorted = items.slice().sort((a,b)=> b.y - a.y || a.x - b.x);
+  const rows = [];
+  let lastY = null, current = null;
+  sorted.forEach(it=>{
+    if(lastY === null || Math.abs(it.y - lastY) > yTol){
+      current = []; rows.push(current); lastY = it.y;
+    }
+    current.push(it);
+  });
+  rows.forEach(r=>r.sort((a,b)=>a.x-b.x));
+  return rows;
+}
+
+// Detect the statement's column headers (Date / Particulars / Deposit / Withdrawal / Balance, under whatever
+// names the bank uses) from their x position, so each amount can be assigned to the column it visually sits under.
+function buildColumns(headerRow){
+  const classified = headerRow.map(it=>{
+    const s = it.str.toUpperCase();
+    let name = null;
+    if(/DATE/.test(s)) name = 'DATE';
+    else if(/MODE/.test(s)) name = 'MODE';
+    else if(/PARTICULAR|NARRATION|DESCRIPTION|TRANSACTION/.test(s)) name = 'PARTICULARS';
+    else if(/DEPOSIT|CREDIT/.test(s)) name = 'DEPOSIT';
+    else if(/WITHDRAWAL|DEBIT/.test(s)) name = 'WITHDRAWAL';
+    else if(/BALANCE/.test(s)) name = 'BALANCE';
+    return name ? {name, x: it.x} : null;
+  }).filter(Boolean);
+  if(!classified.length) return null;
+  classified.sort((a,b)=>a.x-b.x);
+  const cols = [];
+  for(let i=0;i<classified.length;i++){
+    const lo = i===0 ? -Infinity : (classified[i-1].x + classified[i].x)/2;
+    const hi = i===classified.length-1 ? Infinity : (classified[i].x + classified[i+1].x)/2;
+    cols.push({name: classified[i].name, lo, hi});
+  }
+  return cols;
+}
+function isHeaderRow(row){
+  const up = row.map(it=>it.str).join(' ').toUpperCase();
+  return /DATE/.test(up) && /(PARTICULAR|NARRATION|DESCRIPTION|TRANSACTION)/.test(up)
+      && /(DEPOSIT|CREDIT)/.test(up) && /(WITHDRAWAL|DEBIT)/.test(up) && /BALANCE/.test(up);
+}
+function assignCells(row, colDefs){
+  const cells = {};
+  row.forEach(it=>{
+    const col = colDefs.find(c=> it.x >= c.lo && it.x < c.hi);
+    if(!col) return;
+    cells[col.name] = (cells[col.name] ? cells[col.name]+' ' : '') + it.str;
+  });
+  return cells;
+}
+
+// Reconstruct transactions for one page: a row whose Date column parses as a real date starts a new
+// transaction; rows without a date are wrapped description continuations of the previous one.
+// Statements that bundle multiple accounts (PPF / Savings / Current) repeat a
+// "Statement of Transactions in <Account Type> Account Number" heading before each account's table —
+// only the Savings section is kept; other accounts' tables are skipped entirely.
+const SECTION_RE = /Statement of Transactions in\s+([A-Za-z ]+?)\s+Account Number/i;
+function parseStatementPage(items, state){
+  state = state || {section: null, colDefs: null};
+  const rows = clusterRows(items);
+  const txns = [];
+  let current = null;
+  for(const row of rows){
+    const rowText = row.map(it=>it.str).join(' ');
+    const sectionMatch = rowText.match(SECTION_RE);
+    if(sectionMatch){
+      if(current){ txns.push(current); current = null; }
+      state.section = sectionMatch[1].trim();
+      state.colDefs = null; // each account's table gets its own header row further down
+      continue;
+    }
+    if(isHeaderRow(row)){ state.colDefs = buildColumns(row) || state.colDefs; continue; }
+    if(!state.colDefs) continue;
+    if(state.section && !/savings/i.test(state.section)) continue; // skip non-Savings account tables
+    const cells = assignCells(row, state.colDefs);
+    const dateVal = normalizeDate(cells.DATE);
+    if(dateVal){
+      if(current) txns.push(current);
+      current = {
+        id: 'p'+Date.now()+Math.random()+txns.length,
+        date: dateVal,
+        desc: (cells.PARTICULARS||'').trim(),
+        cat: '',
+        debit: parseAmt(cells.WITHDRAWAL),
+        credit: parseAmt(cells.DEPOSIT)
+      };
+    } else if(current){
+      if(cells.PARTICULARS) current.desc = (current.desc + ' ' + cells.PARTICULARS).trim();
+      if(cells.WITHDRAWAL) current.debit = parseAmt(cells.WITHDRAWAL);
+      if(cells.DEPOSIT) current.credit = parseAmt(cells.DEPOSIT);
+    }
+  }
+  if(current) txns.push(current);
+  // Drop brought-forward balance markers (e.g. "B/F") — they're a page-continuity note, not a real transaction.
+  const real = txns.filter(t => !(/^B\/?F\b/i.test(t.desc) && !t.debit && !t.credit));
+  return {txns: real, state};
+}
+
+// Fallback for layouts the column detector can't make sense of: scan raw lines for a date + amount pair.
+function parseStatementFallback(text){
+  const DATE_RE = /(\d{1,2}[\/\-\.][A-Za-z0-9]{2,4}[\/\-\.]\d{2,4})/;
+  const NUM_RE = /-?\d[\d,]*\.\d{2}/g;
+  const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
+  const rows = [];
+  lines.forEach(line=>{
+    const dateMatch = line.match(DATE_RE);
+    if(!dateMatch) return;
+    const nums = line.match(NUM_RE);
+    if(!nums || nums.length === 0) return;
+    const isoDate = normalizeDate(dateMatch[1]);
+    if(!isoDate) return;
+    let desc = line.slice(dateMatch.index + dateMatch[0].length, line.lastIndexOf(nums[nums.length-1])).trim();
+    desc = desc.replace(/\s{2,}/g,' ').replace(/^[-:\s]+|[-:\s]+$/g,'') || '(statement line)';
+    const amount = parseFloat(nums[0].replace(/,/g,''));
+    const likelyCredit = /\bCR\b|credit|deposit|salary/i.test(line);
+    rows.push({ id:'p'+Date.now()+Math.random(), date:isoDate, desc, cat:'',
+      debit: likelyCredit ? 0 : Math.abs(amount), credit: likelyCredit ? Math.abs(amount) : 0 });
+  });
+  return rows;
+}
+
+let previewRows = [];
+let pendingPdfFile = null;
+
+async function handlePdf(file){
+  if(!file) return;
+  pendingPdfFile = file;
+  document.getElementById('passwordPrompt').style.display = 'none';
+  await attemptParsePdf(file, undefined);
+}
+
+async function submitPdfPassword(){
+  const input = document.getElementById('pdfPassword');
+  const password = input.value;
+  input.value = ''; // never keep the typed password around longer than this call
+  if(!pendingPdfFile || !password) return;
+  await attemptParsePdf(pendingPdfFile, password);
+}
+
+async function attemptParsePdf(file, password){
+  document.getElementById('dropLabel').textContent = 'Reading ' + file.name + '…';
+  let buf = await file.arrayBuffer();
+  try{
+    const task = password === undefined ? pdfjsLib.getDocument({data: buf}) : pdfjsLib.getDocument({data: buf, password});
+    const pdf = await task.promise;
+    let rows = [];
+    let state = {section: null, colDefs: null};
+    let fullTextFallback = '';
+    for(let i=1;i<=pdf.numPages;i++){
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const items = content.items.map(it=>({str: it.str, x: it.transform[4], y: it.transform[5]})).filter(it=>it.str && it.str.trim());
+      const result = parseStatementPage(items, state);
+      rows = rows.concat(result.txns);
+      state = result.state;
+      if(!state.colDefs) fullTextFallback += items.map(it=>it.str).join(' ') + '\n';
+    }
+    if(rows.length === 0 && fullTextFallback){
+      rows = parseStatementFallback(fullTextFallback);
+    }
+    previewRows = rows;
+    fullTextFallback = '';         // discard extracted statement text once rows are pulled out
+    buf = null;                    // discard raw PDF bytes
+    pendingPdfFile = null;         // nothing about the source file is kept after this point
+    document.getElementById('dropLabel').textContent = 'Click to choose a PDF statement, or drag one here';
+    document.getElementById('passwordPrompt').style.display = 'none';
+    renderPreview();
+  }catch(e){
+    buf = null;
+    if(e.name === 'PasswordException'){
+      const promptEl = document.getElementById('passwordPrompt');
+      const hint = document.getElementById('pdfPasswordHint');
+      promptEl.style.display = 'block';
+      if(password !== undefined){
+        hint.textContent = 'Incorrect password — try again. Used only in your browser, never saved.';
+      } else {
+        hint.textContent = 'Used once, in your browser, to open this file — never saved.';
+      }
+      document.getElementById('dropLabel').textContent = 'Click to choose a PDF statement, or drag one here';
+      document.getElementById('pdfPassword').focus();
+    } else {
+      document.getElementById('dropLabel').textContent = 'Could not read that PDF — try a different file';
+      pendingPdfFile = null;
+      console.error(e);
+    }
+  }
+}
+
+async function clearAllData(){
+  if(!confirm('This permanently deletes every transaction and category stored in this browser. Continue?')) return;
+  localStorage.removeItem(STORE_KEY);
+  localStorage.removeItem(SETTINGS_KEY);
+  await writeSyncFile();
+  location.reload();
+}
+
+function txSignature(t){
+  return `${t.date}|${(t.desc||'').trim().toLowerCase()}|${Math.round((t.debit||0)*100)}|${Math.round((t.credit||0)*100)}`;
+}
+
+function renderPreview(){
+  const area = document.getElementById('previewArea');
+  if(previewRows.length === 0){
+    area.innerHTML = '<div class="empty" style="margin-top:14px;">No rows detected. This statement\'s layout may not match the parser — try adding entries manually.</div>';
+    return;
+  }
+  const s = loadSettings();
+  const catOptions = '<option value="">—</option>' + s.categories.map(c=>`<option value="${c}">${c}</option>`).join('');
+
+  // Flag rows that are an exact match (same date, description, debit, credit) for something already
+  // in the ledger, or repeated within this same import — common when statement periods overlap.
+  const existingSigs = new Set(loadTx().map(txSignature));
+  const sigCounts = {};
+  previewRows.forEach(r => { const sig = txSignature(r); sigCounts[sig] = (sigCounts[sig]||0)+1; });
+  const dupFlags = previewRows.map(r => {
+    const sig = txSignature(r);
+    return existingSigs.has(sig) || sigCounts[sig] > 1;
+  });
+  const dupCount = dupFlags.filter(Boolean).length;
+
+  area.innerHTML = `
+    <div class="hint" style="margin-top:14px;">${previewRows.length} row(s) detected. Review each one, then add to the ledger.${dupCount ? ` <strong style="color:var(--debit);">${dupCount} look${dupCount===1?'s':''} like an exact duplicate</strong> of something already in your ledger or repeated in this file — tinted below.` : ''}</div>
+    <div style="overflow-x:auto; -webkit-overflow-scrolling:touch; margin-top:8px;">
+    <table style="table-layout:fixed; width:760px;">
+      <colgroup>
+        <col style="width:130px;"><col style="width:220px;"><col style="width:140px;"><col style="width:110px;"><col style="width:110px;"><col style="width:36px;">
+      </colgroup>
+      <thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="num">Debit</th><th class="num">Credit</th><th></th></tr></thead>
+      <tbody>
+        ${previewRows.map((r,i)=>`
+          <tr class="${dupFlags[i] ? 'dup-row' : ''}" ${dupFlags[i] ? 'title="Exact match already in your ledger or repeated in this import"' : ''}>
+            <td><input type="date" value="${r.date}" onchange="previewRows[${i}].date=this.value"/>${dupFlags[i] ? '<div class="dup-tag">duplicate</div>' : ''}</td>
+            <td><input type="text" value="${escapeHtml(r.desc)}" onchange="previewRows[${i}].desc=this.value" title="${escapeHtml(r.desc)}" style="width:100%;"/></td>
+            <td><select onchange="previewRows[${i}].cat=this.value" style="width:100%;">${catOptions}</select></td>
+            <td class="num"><input type="number" step="0.01" value="${r.debit||''}" onchange="previewRows[${i}].debit=parseFloat(this.value)||0" style="width:100%;text-align:right;"/></td>
+            <td class="num"><input type="number" step="0.01" value="${r.credit||''}" onchange="previewRows[${i}].credit=parseFloat(this.value)||0" style="width:100%;text-align:right;"/></td>
+            <td><button class="icon-btn" onclick="previewRows.splice(${i},1); renderPreview();" title="Discard row">✕</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    </div>
+    <div class="hint" style="margin-top:6px;">Scroll sideways to see all columns on a small screen.</div>
+    <div style="margin-top:12px;display:flex;gap:10px;">
+      <button class="primary" onclick="commitPreview()">Add ${previewRows.length} row(s) to ledger</button>
+      ${dupCount ? `<button class="ghost" onclick="discardDuplicates()">Discard ${dupCount} duplicate${dupCount===1?'':'s'}</button>` : ''}
+      <button class="ghost" onclick="previewRows=[]; renderPreview();">Discard all</button>
+    </div>
+  `;
+}
+
+function discardDuplicates(){
+  const existingSigs = new Set(loadTx().map(txSignature));
+  const sigCounts = {};
+  previewRows.forEach(r => { const sig = txSignature(r); sigCounts[sig] = (sigCounts[sig]||0)+1; });
+  const seen = new Set();
+  previewRows = previewRows.filter(r => {
+    const sig = txSignature(r);
+    if(existingSigs.has(sig)) return false;
+    if(sigCounts[sig] > 1){
+      if(seen.has(sig)) return false; // keep the first occurrence of an in-file repeat, drop the rest
+      seen.add(sig);
+    }
+    return true;
+  });
+  renderPreview();
+}
+
+function commitPreview(){
+  const list = loadTx();
+  previewRows.forEach(r => list.push({id:r.id, date:r.date, desc:r.desc, cat:r.cat, debit:r.debit||0, credit:r.credit||0}));
+  saveTx(list);
+  previewRows = [];
+  document.getElementById('previewArea').innerHTML = '<div class="hint" style="margin-top:14px;">Added to the ledger.</div>';
+  render();
+}
+
+/* ---------- Cloud-folder sync (File System Access API) ----------
+   Writes the full ledger state to a single JSON file the user picks once — typically inside
+   their OneDrive or Google Drive synced folder — so the cloud app picks up changes automatically.
+   Chrome/Edge desktop only. The file handle is kept in IndexedDB so the connection survives reloads;
+   browsers require a fresh user click to re-grant write permission each session, which is why a
+   "reconnect" affordance exists. */
+let syncHandle = null;
+let syncStatus = 'unsupported'; // 'unsupported' | 'disconnected' | 'connected' | 'needs-permission'
+
+function idbOpen(){
+  return new Promise((resolve,reject)=>{
+    const req = indexedDB.open('ledger_fsa_db', 1);
+    req.onupgradeneeded = () => { req.result.createObjectStore('handles'); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbGet(key){
+  const db = await idbOpen();
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction('handles','readonly');
+    const r = tx.objectStore('handles').get(key);
+    r.onsuccess = () => resolve(r.result || null);
+    r.onerror = () => reject(r.error);
+  });
+}
+async function idbSet(key,val){
+  const db = await idbOpen();
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction('handles','readwrite');
+    const r = tx.objectStore('handles').put(val,key);
+    r.onsuccess = () => resolve();
+    r.onerror = () => reject(r.error);
+  });
+}
+
+function updateSyncUI(){
+  const el = document.getElementById('syncStatus');
+  const actions = document.getElementById('syncActions');
+  if(!el) return;
+  if(syncStatus === 'unsupported'){
+    el.textContent = 'Not available in this browser — auto-sync needs Chrome or Edge on desktop.';
+    actions.innerHTML = '';
+  } else if(syncStatus === 'connected'){
+    el.innerHTML = `Auto-saving to <strong>${syncHandle ? escapeHtml(syncHandle.name) : 'file'}</strong> — keep that file inside your OneDrive or Google Drive folder and it'll sync on its own.`;
+    actions.innerHTML = `<button class="ghost" onclick="loadFromSyncFile()">Load from file</button><button class="ghost" onclick="disconnectSyncFile()">Disconnect</button>`;
+  } else if(syncStatus === 'needs-permission'){
+    el.innerHTML = `Connected to <strong>${syncHandle ? escapeHtml(syncHandle.name) : 'file'}</strong>, but needs permission renewed this session.`;
+    actions.innerHTML = `<button class="ghost" onclick="reconnectSyncFile()">Reconnect</button><button class="ghost" onclick="disconnectSyncFile()">Disconnect</button>`;
+  } else {
+    el.textContent = 'Not connected — saving to this browser only.';
+    actions.innerHTML = `<button class="ghost" onclick="connectSyncFile()">Connect a file…</button>`;
+  }
+}
+
+async function connectSyncFile(){
+  try{
+    const handle = await window.showSaveFilePicker({
+      suggestedName: 'ledger-data.json',
+      types: [{description:'Ledger data', accept:{'application/json':['.json']}}]
+    });
+    syncHandle = handle;
+    await idbSet('syncFile', handle);
+    syncStatus = 'connected';
+    updateSyncUI();
+    await writeSyncFile();
+  }catch(e){
+    if(e.name !== 'AbortError') console.error(e);
+  }
+}
+
+async function reconnectSyncFile(){
+  if(!syncHandle) return;
+  try{
+    const perm = await syncHandle.requestPermission({mode:'readwrite'});
+    if(perm === 'granted'){
+      syncStatus = 'connected';
+      updateSyncUI();
+      await writeSyncFile();
+    }
+  }catch(e){ console.error(e); }
+}
+
+async function disconnectSyncFile(){
+  syncHandle = null;
+  await idbSet('syncFile', null);
+  syncStatus = 'disconnected';
+  updateSyncUI();
+}
+
+async function loadFromSyncFile(){
+  if(!syncHandle) return;
+  if(!confirm('This replaces everything currently stored in this browser with the contents of the connected file. Continue?')) return;
+  try{
+    const file = await syncHandle.getFile();
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if(data.settings) localStorage.setItem(SETTINGS_KEY, JSON.stringify(data.settings));
+    if(data.transactions) localStorage.setItem(STORE_KEY, JSON.stringify(data.transactions));
+    render();
+  }catch(e){
+    alert('Could not read that file — it may be empty or not in the expected format yet.');
+    console.error(e);
+  }
+}
+
+async function writeSyncFile(){
+  if(!syncHandle) return;
+  try{
+    const perm = await syncHandle.queryPermission({mode:'readwrite'});
+    if(perm !== 'granted'){ syncStatus = 'needs-permission'; updateSyncUI(); return; }
+    const data = JSON.stringify({ settings: loadSettings(), transactions: loadTx() }, null, 2);
+    const writable = await syncHandle.createWritable();
+    await writable.write(data);
+    await writable.close();
+    if(syncStatus !== 'connected'){ syncStatus = 'connected'; updateSyncUI(); }
+  }catch(e){
+    console.error('Sync write failed', e);
+  }
+}
+
+async function initSync(){
+  if(!('showSaveFilePicker' in window)){
+    syncStatus = 'unsupported';
+    updateSyncUI();
+    return;
+  }
+  try{
+    const handle = await idbGet('syncFile');
+    if(handle){
+      syncHandle = handle;
+      const perm = await handle.queryPermission({mode:'readwrite'});
+      syncStatus = perm === 'granted' ? 'connected' : 'needs-permission';
+    } else {
+      syncStatus = 'disconnected';
+    }
+  }catch(e){
+    syncStatus = 'disconnected';
+  }
+  updateSyncUI();
+}
+
+/* ---------- init ---------- */
+document.getElementById('manDate').value = todayISO();
+render();
+initSync();
+</script>
+</body>
+</html>
