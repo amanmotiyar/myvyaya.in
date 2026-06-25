@@ -130,6 +130,21 @@ tr.dup-row td{border-top-color:#E0C98F;}
 </head>
 <body>
 
+<div id="appModal" style="display:none; position:fixed; inset:0; background:rgba(26,46,74,0.45); z-index:1000; align-items:center; justify-content:center; padding:20px;">
+  <div style="background:var(--bg-card); border:1px solid var(--rule-strong); max-width:380px; width:100%; padding:20px;">
+    <div id="modalTitle" style="font-family:var(--serif); font-weight:700; font-size:16px; margin-bottom:8px;"></div>
+    <div id="modalMessage" style="font-size:13px; color:var(--ink-soft); margin-bottom:14px; line-height:1.5;"></div>
+    <input type="text" id="modalInput" style="display:none; margin-bottom:14px;" />
+    <div id="modalError" style="display:none; font-size:12px; color:var(--debit); margin-bottom:10px;"></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button class="ghost" id="modalCancelBtn" onclick="closeModal()">Cancel</button>
+      <button class="primary" id="modalConfirmBtn" onclick="modalConfirmClick()">OK</button>
+    </div>
+  </div>
+</div>
+
+<div id="toastHost" style="position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:1001; display:flex; flex-direction:column; gap:8px; align-items:center;"></div>
+
 <div id="lockOverlay" style="display:none; position:fixed; inset:0; background:#F4EFE3; z-index:999; flex-direction:column; align-items:center; justify-content:center; padding:20px;">
   <div style="max-width:320px; width:100%; text-align:center;">
     <div style="font-family:var(--serif); font-weight:700; font-size:24px; color:var(--ink); margin-bottom:6px;">Passbook</div>
@@ -258,6 +273,7 @@ tr.dup-row td{border-top-color:#E0C98F;}
         <button class="link" onclick="exportCsv()">Export CSV</button>
       </div>
     </div>
+    <input type="text" id="ledgerSearch" placeholder="Search description or category…" oninput="setSearchQuery(this.value)" style="margin-bottom:14px; max-width:320px;" />
     <div id="ledgerGroups"></div>
     <div class="empty" id="ledgerEmpty" style="display:none;">No transactions in this period yet.</div>
   </div>
@@ -288,6 +304,12 @@ tr.dup-row td{border-top-color:#E0C98F;}
       </select>
     </div>
 
+    <div id="insightsEmpty" style="display:none; text-align:center; padding:30px 10px;">
+      <div style="font-size:13.5px; color:var(--ink-soft); margin-bottom:4px;">No transactions in this range yet.</div>
+      <div style="font-size:12.5px; color:var(--ink-mute);">Add a few entries — or import a statement — and balance trends, spending patterns, and more will show up here.</div>
+    </div>
+
+    <div id="insightsBlocks">
     <div class="insight-block">
       <div class="insight-label">Balance over time</div>
       <div style="position:relative; width:100%; height:220px;">
@@ -342,6 +364,7 @@ tr.dup-row td{border-top-color:#E0C98F;}
         <span><span class="sw" style="background:#8C2F2F;"></span>High</span>
       </div>
     </div>
+    </div>
   </div>
 
 </main>
@@ -350,6 +373,58 @@ tr.dup-row td{border-top-color:#E0C98F;}
 const STORE_KEY = 'ledger_transactions_v1';
 const SETTINGS_KEY = 'ledger_settings_v1';
 let currentPeriod = 'daily';
+
+/* ---------- Modal & toast (replaces native alert/confirm/prompt) ---------- */
+let modalConfirmCallback = null;
+let modalIsInput = false;
+
+function openModal({title, message, withInput=false, inputValue='', confirmText='OK', cancelText='Cancel', onConfirm, danger=false}){
+  modalConfirmCallback = onConfirm;
+  modalIsInput = withInput;
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalMessage').textContent = message;
+  document.getElementById('modalError').style.display = 'none';
+  const input = document.getElementById('modalInput');
+  input.style.display = withInput ? 'block' : 'none';
+  input.value = inputValue;
+  document.getElementById('modalConfirmBtn').textContent = confirmText;
+  document.getElementById('modalConfirmBtn').className = danger ? 'primary' : 'primary';
+  document.getElementById('modalConfirmBtn').style.background = danger ? 'var(--debit)' : '';
+  document.getElementById('modalConfirmBtn').style.borderColor = danger ? 'var(--debit)' : '';
+  document.getElementById('modalCancelBtn').textContent = cancelText;
+  const overlay = document.getElementById('appModal');
+  overlay.style.display = 'flex';
+  if(withInput){ setTimeout(()=>{ input.focus(); input.select(); }, 30); }
+}
+function closeModal(){
+  document.getElementById('appModal').style.display = 'none';
+  modalConfirmCallback = null;
+}
+function modalShowError(msg){
+  const el = document.getElementById('modalError');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function modalConfirmClick(){
+  const value = modalIsInput ? document.getElementById('modalInput').value : true;
+  if(modalConfirmCallback) modalConfirmCallback(value);
+}
+document.addEventListener('keydown', (e) => {
+  if(document.getElementById('appModal').style.display === 'flex'){
+    if(e.key === 'Enter') modalConfirmClick();
+    if(e.key === 'Escape') closeModal();
+  }
+});
+
+function showToast(message, type='info'){
+  const host = document.getElementById('toastHost');
+  const el = document.createElement('div');
+  const bg = type === 'error' ? 'var(--debit)' : type === 'success' ? 'var(--credit)' : 'var(--ink)';
+  el.style.cssText = `background:${bg}; color:#fff; padding:9px 16px; font-size:13px; border-radius:4px; box-shadow:0 2px 8px rgba(0,0,0,0.2);`;
+  el.textContent = message;
+  host.appendChild(el);
+  setTimeout(() => { el.style.transition = 'opacity 0.4s'; el.style.opacity = '0'; setTimeout(()=>el.remove(), 400); }, 2600);
+}
 let periodOffset = 0;
 
 const MONTH_COLORS = [
@@ -383,7 +458,7 @@ function saveStartingBalance(){
 function renderChips(){
   const s = loadSettings();
   document.getElementById('chipList').innerHTML = s.categories.length
-    ? s.categories.map((c,i)=>`<div class="chip">${c}<button onclick="removeCategory(${i})" title="Remove">✕</button></div>`).join('')
+    ? s.categories.map((c,i)=>`<div class="chip">${escapeHtml(c)}<button onclick="renameCategoryPrompt(${i})" title="Rename" style="margin-left:2px;">✎</button><button onclick="removeCategory(${i})" title="Remove">✕</button></div>`).join('')
     : '<div class="empty" style="padding:0;">No categories yet — add one below.</div>';
 }
 function addCategory(){
@@ -397,6 +472,35 @@ function addCategory(){
   input.value = '';
   renderChips();
   populateCategorySelect();
+}
+function renameCategoryPrompt(i){
+  const s = loadSettings();
+  const oldName = s.categories[i];
+  openModal({
+    title: 'Rename category',
+    message: `Renaming "${oldName}" also updates every transaction currently tagged with it.`,
+    withInput: true,
+    inputValue: oldName,
+    confirmText: 'Rename',
+    onConfirm: (newName) => {
+      newName = (newName||'').trim();
+      if(!newName){ modalShowError('Category name can\'t be empty.'); return; }
+      if(newName.toLowerCase() !== oldName.toLowerCase() && s.categories.some(c=>c.toLowerCase()===newName.toLowerCase())){
+        modalShowError('That category name already exists.'); return;
+      }
+      s.categories[i] = newName;
+      saveSettingsObj(s);
+      const tx = loadTx();
+      let updated = 0;
+      tx.forEach(t => { if(t.cat === oldName){ t.cat = newName; updated++; } });
+      if(updated) saveTx(tx);
+      closeModal();
+      renderChips();
+      populateCategorySelect();
+      render();
+      showToast(updated ? `Renamed — ${updated} transaction${updated===1?'':'s'} updated.` : 'Category renamed.', 'success');
+    }
+  });
 }
 function removeCategory(i){
   const s = loadSettings();
@@ -429,19 +533,46 @@ function addManual(){
   const cat = document.getElementById('manCat').value;
   const debit = parseFloat(document.getElementById('manDebit').value) || 0;
   const credit = parseFloat(document.getElementById('manCredit').value) || 0;
-  if(debit === 0 && credit === 0){ alert('Enter a debit or credit amount.'); return; }
-  const list = loadTx();
-  list.push({ id: Date.now()+''+Math.random(), date, desc, cat, debit, credit });
-  saveTx(list);
-  document.getElementById('manDesc').value = '';
-  document.getElementById('manDebit').value = '';
-  document.getElementById('manCredit').value = '';
-  render();
+  if(debit === 0 && credit === 0){ showToast('Enter a debit or credit amount.', 'error'); return; }
+
+  const candidate = { id: Date.now()+''+Math.random(), date, desc, cat, debit, credit };
+  const isDup = loadTx().some(t => txSignature(t) === txSignature(candidate));
+
+  const commit = () => {
+    const list = loadTx();
+    list.push(candidate);
+    saveTx(list);
+    document.getElementById('manDesc').value = '';
+    document.getElementById('manDebit').value = '';
+    document.getElementById('manCredit').value = '';
+    render();
+    showToast('Transaction added.', 'success');
+  };
+
+  if(isDup){
+    openModal({
+      title: 'Looks like a duplicate',
+      message: `An entry with this exact date, description, debit, and credit already exists in your ledger. Add it anyway?`,
+      confirmText: 'Add anyway',
+      onConfirm: () => { closeModal(); commit(); }
+    });
+  } else {
+    commit();
+  }
 }
 function deleteTx(id){
-  if(!confirm('Delete this transaction?')) return;
-  saveTx(loadTx().filter(t=>t.id !== id));
-  render();
+  openModal({
+    title: 'Delete this transaction?',
+    message: 'This can\'t be undone.',
+    confirmText: 'Delete',
+    danger: true,
+    onConfirm: () => {
+      saveTx(loadTx().filter(t=>t.id !== id));
+      closeModal();
+      render();
+      showToast('Transaction deleted.');
+    }
+  });
 }
 
 function setPeriod(p){
@@ -579,9 +710,19 @@ function toggleGroup(key){
   render();
 }
 
-function renderLedgerGroups(inPeriod, start, end){
+let searchQuery = '';
+function setSearchQuery(v){ searchQuery = (v||'').trim().toLowerCase(); render(); }
+function applySearchFilter(list){
+  if(!searchQuery) return list;
+  return list.filter(t => (t.desc||'').toLowerCase().includes(searchQuery) || (t.cat||'').toLowerCase().includes(searchQuery));
+}
+
+function renderLedgerGroups(inPeriodFull, start, end){
   const wrap = document.getElementById('ledgerGroups');
   const empty = document.getElementById('ledgerEmpty');
+  const inPeriod = applySearchFilter(inPeriodFull);
+  const emptyMsg = searchQuery ? 'No transactions match your search in this period.' : 'No transactions in this period yet.';
+  document.getElementById('ledgerEmpty').textContent = emptyMsg;
   document.getElementById('ledgerSub').textContent =
     currentPeriod==='daily' ? '' : currentPeriod==='weekly' ? '· by day, Monday to Sunday' : currentPeriod==='monthly' ? '· by week' : '· by month';
 
@@ -632,12 +773,67 @@ function collapseAllGroups(){
   render();
 }
 
+let editingTxId = null;
+
+function categoryOptionsHtml(selected){
+  const s = loadSettings();
+  return '<option value="">— optional —</option>' + s.categories.map(c =>
+    `<option value="${escapeHtml(c)}" ${c===selected?'selected':''}>${escapeHtml(c)}</option>`).join('');
+}
+
+function startEditTx(id){ editingTxId = id; render(); }
+function cancelEditTx(){ editingTxId = null; render(); }
+
+function saveEditTx(id){
+  const date = document.getElementById('editDate-'+id).value;
+  const desc = document.getElementById('editDesc-'+id).value.trim() || '(no description)';
+  const cat = document.getElementById('editCat-'+id).value;
+  const debit = parseFloat(document.getElementById('editDebit-'+id).value) || 0;
+  const credit = parseFloat(document.getElementById('editCredit-'+id).value) || 0;
+  if(!date){ showToast('Pick a date.', 'error'); return; }
+  if(debit === 0 && credit === 0){ showToast('Enter a debit or credit amount.', 'error'); return; }
+
+  const list = loadTx();
+  const idx = list.findIndex(t => t.id === id);
+  if(idx === -1) return;
+  const updated = { ...list[idx], date, desc, cat, debit, credit };
+  const isDup = list.some((t,i) => i !== idx && txSignature(t) === txSignature(updated));
+
+  const commit = () => {
+    list[idx] = updated;
+    saveTx(list);
+    editingTxId = null;
+    render();
+    showToast('Transaction updated.', 'success');
+  };
+  if(isDup){
+    openModal({
+      title: 'Looks like a duplicate',
+      message: 'Another entry already has this exact date, description, debit, and credit. Save anyway?',
+      confirmText: 'Save anyway',
+      onConfirm: () => { closeModal(); commit(); }
+    });
+  } else {
+    commit();
+  }
+}
+
 function renderRows(rows){
   const sorted = rows.slice().sort((a,b)=> a.date.localeCompare(b.date) || (a.id>b.id?1:-1));
   return `<div style="overflow-x:auto; -webkit-overflow-scrolling:touch;"><table style="margin-bottom:8px; min-width:620px;">
     <thead><tr><th></th><th>Date</th><th>Description</th><th>Category</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th><th></th></tr></thead>
     <tbody>
-      ${sorted.map(t=>`
+      ${sorted.map(t => t.id === editingTxId ? `
+        <tr class="editing-row">
+          <td class="entryno">#${(t.id+'').slice(-5)}</td>
+          <td><input type="date" id="editDate-${t.id}" value="${t.date}" style="width:128px;"/></td>
+          <td><input type="text" id="editDesc-${t.id}" value="${escapeHtml(t.desc)}" style="width:100%;"/></td>
+          <td><select id="editCat-${t.id}" style="width:100%;">${categoryOptionsHtml(t.cat)}</select></td>
+          <td class="num"><input type="number" step="0.01" id="editDebit-${t.id}" value="${t.debit||''}" style="width:90px;text-align:right;"/></td>
+          <td class="num"><input type="number" step="0.01" id="editCredit-${t.id}" value="${t.credit||''}" style="width:90px;text-align:right;"/></td>
+          <td class="num">${fmt(t.balance)}</td>
+          <td style="white-space:nowrap;"><button class="icon-btn" onclick="saveEditTx('${t.id}')" title="Save">✓</button><button class="icon-btn" onclick="cancelEditTx()" title="Cancel">✕</button></td>
+        </tr>` : `
         <tr class="${t.cat ? '' : 'uncategorized'}">
           <td class="entryno">#${(t.id+'').slice(-5)}</td>
           <td>${new Date(t.date+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</td>
@@ -646,7 +842,7 @@ function renderRows(rows){
           <td class="num">${t.debit ? '<span class="amt-debit">'+fmt(t.debit)+'</span>' : ''}</td>
           <td class="num">${t.credit ? '<span class="amt-credit">'+fmt(t.credit)+'</span>' : ''}</td>
           <td class="num">${fmt(t.balance)}</td>
-          <td><button class="icon-btn" onclick="deleteTx('${t.id}')" title="Delete">✕</button></td>
+          <td style="white-space:nowrap;"><button class="icon-btn" onclick="startEditTx('${t.id}')" title="Edit">✎</button><button class="icon-btn" onclick="deleteTx('${t.id}')" title="Delete">✕</button></td>
         </tr>`).join('')}
     </tbody>
   </table></div>`;
@@ -775,6 +971,15 @@ function renderInsights(){
   const labels = stats.map(s => s.label);
   const fromIso = `${months[0].year}-${String(months[0].month+1).padStart(2,'0')}-01`;
   const toIso = isoOf(new Date());
+
+  const hasDataInRange = loadTx().some(t => t.date >= fromIso && t.date <= toIso);
+  document.getElementById('insightsEmpty').style.display = hasDataInRange ? 'none' : 'block';
+  document.getElementById('insightsBlocks').style.display = hasDataInRange ? 'block' : 'none';
+  if(!hasDataInRange){
+    [chartBalance, chartIncomeExpense, chartTopCat, chartDow, chartSavings].forEach(destroyChart);
+    chartBalance = chartIncomeExpense = chartTopCat = chartDow = chartSavings = undefined;
+    return;
+  }
 
   destroyChart(chartBalance);
   chartBalance = new Chart(document.getElementById('balanceTrendChart'), {
@@ -1150,12 +1355,19 @@ async function attemptParsePdf(file, password){
   }
 }
 
-async function clearAllData(){
-  if(!confirm('This permanently deletes every transaction and category stored in this browser. Continue?')) return;
-  localStorage.removeItem(STORE_KEY);
-  localStorage.removeItem(SETTINGS_KEY);
-  await writeSyncFile();
-  location.reload();
+function clearAllData(){
+  openModal({
+    title: 'Clear all data?',
+    message: 'This permanently deletes every transaction and category stored in this browser.',
+    confirmText: 'Clear everything',
+    danger: true,
+    onConfirm: async () => {
+      localStorage.removeItem(STORE_KEY);
+      localStorage.removeItem(SETTINGS_KEY);
+      await writeSyncFile();
+      location.reload();
+    }
+  });
 }
 
 /* ---------- PIN lock (casual deterrent only, not real security) ---------- */
@@ -1179,18 +1391,28 @@ function updatePinUI(){
 async function setPin(){
   const p1 = document.getElementById('newPin').value.trim();
   const p2 = document.getElementById('confirmPin').value.trim();
-  if(p1.length < 4){ alert('Use at least 4 digits.'); return; }
-  if(p1 !== p2){ alert("Those two don't match — try again."); return; }
+  if(p1.length < 4){ showToast('Use at least 4 digits.', 'error'); return; }
+  if(p1 !== p2){ showToast("Those two don't match — try again.", 'error'); return; }
   localStorage.setItem(PIN_KEY, await sha256Hex(p1));
   document.getElementById('newPin').value = '';
   document.getElementById('confirmPin').value = '';
   updatePinUI();
+  showToast('PIN lock enabled.', 'success');
 }
 
 function removePin(){
-  if(!confirm('Remove the PIN lock?')) return;
-  localStorage.removeItem(PIN_KEY);
-  updatePinUI();
+  openModal({
+    title: 'Remove PIN lock?',
+    message: 'The ledger will open without asking for a PIN from now on.',
+    confirmText: 'Remove',
+    danger: true,
+    onConfirm: () => {
+      localStorage.removeItem(PIN_KEY);
+      closeModal();
+      updatePinUI();
+      showToast('PIN lock removed.');
+    }
+  });
 }
 
 async function checkLock(){
@@ -1224,21 +1446,29 @@ function downloadBackup(){
 
 function restoreBackupFile(file){
   if(!file) return;
-  if(!confirm('This replaces everything currently stored in this browser with the contents of this backup file. Continue?')) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try{
-      const data = JSON.parse(e.target.result);
-      if(data.settings) localStorage.setItem(SETTINGS_KEY, JSON.stringify(data.settings));
-      if(data.transactions) localStorage.setItem(STORE_KEY, JSON.stringify(data.transactions));
-      render();
-      alert('Backup restored.');
-    }catch(err){
-      alert('Could not read that file — it may not be a Passbook backup.');
-      console.error(err);
+  openModal({
+    title: 'Restore from backup?',
+    message: 'This replaces everything currently stored in this browser with the contents of this backup file.',
+    confirmText: 'Restore',
+    danger: true,
+    onConfirm: () => {
+      closeModal();
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try{
+          const data = JSON.parse(e.target.result);
+          if(data.settings) localStorage.setItem(SETTINGS_KEY, JSON.stringify(data.settings));
+          if(data.transactions) localStorage.setItem(STORE_KEY, JSON.stringify(data.transactions));
+          render();
+          showToast('Backup restored.', 'success');
+        }catch(err){
+          showToast('Could not read that file — it may not be a Passbook backup.', 'error');
+          console.error(err);
+        }
+      };
+      reader.readAsText(file);
     }
-  };
-  reader.readAsText(file);
+  });
 }
 
 function txSignature(t){
@@ -1412,20 +1642,29 @@ async function disconnectSyncFile(){
   updateSyncUI();
 }
 
-async function loadFromSyncFile(){
+function loadFromSyncFile(){
   if(!syncHandle) return;
-  if(!confirm('This replaces everything currently stored in this browser with the contents of the connected file. Continue?')) return;
-  try{
-    const file = await syncHandle.getFile();
-    const text = await file.text();
-    const data = JSON.parse(text);
-    if(data.settings) localStorage.setItem(SETTINGS_KEY, JSON.stringify(data.settings));
-    if(data.transactions) localStorage.setItem(STORE_KEY, JSON.stringify(data.transactions));
-    render();
-  }catch(e){
-    alert('Could not read that file — it may be empty or not in the expected format yet.');
-    console.error(e);
-  }
+  openModal({
+    title: 'Load from connected file?',
+    message: 'This replaces everything currently stored in this browser with the contents of the connected file.',
+    confirmText: 'Load',
+    danger: true,
+    onConfirm: async () => {
+      closeModal();
+      try{
+        const file = await syncHandle.getFile();
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if(data.settings) localStorage.setItem(SETTINGS_KEY, JSON.stringify(data.settings));
+        if(data.transactions) localStorage.setItem(STORE_KEY, JSON.stringify(data.transactions));
+        render();
+        showToast('Loaded from file.', 'success');
+      }catch(e){
+        showToast('Could not read that file — it may be empty or not in the expected format yet.', 'error');
+        console.error(e);
+      }
+    }
+  });
 }
 
 async function writeSyncFile(){
