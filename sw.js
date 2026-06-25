@@ -1,4 +1,4 @@
-const CACHE_NAME = 'passbook-cache-v1';
+const CACHE_NAME = 'passbook-cache-v2';
 const APP_SHELL = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -17,14 +17,37 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Cache-first for the app's own files, so the ledger still opens with no connection.
-// Everything else (fonts, pdf.js from a CDN) falls back to the network as usual —
-// PDF statement import needs an internet connection the first time it loads that library.
+function isHtmlRequest(request) {
+  return request.mode === 'navigate' ||
+    request.url === self.location.origin + '/' ||
+    request.url.endsWith('/index.html');
+}
+
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const isSameOrigin = event.request.url.startsWith(self.location.origin);
   if (!isSameOrigin) return;
 
+  // Network-first for the page itself: whenever there's a connection, always fetch the
+  // latest index.html and update the cache, so a new deploy shows up immediately instead
+  // of being stuck behind whatever was cached on a previous visit. Falls back to the cached
+  // copy only when there's genuinely no connection (offline use).
+  if (isHtmlRequest(event.request)) {
+    event.respondWith(
+      fetch(event.request)
+        .then((resp) => {
+          if (resp && resp.status === 200) {
+            const clone = resp.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return resp;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Cache-first for static assets (icons, manifest) that change rarely, if ever.
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
